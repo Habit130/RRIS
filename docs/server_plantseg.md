@@ -15,6 +15,7 @@ This repository is adapted for a single RTX 4090 Linux server with Python 3.10, 
 
 - Use `environment.server.yml` as the only environment definition artifact.
 - The environment pins PyTorch 2.0.0 CUDA 11.8 and `mmcv-full==1.7.2`.
+- `opencv-python-headless` is installed before `mmcv-full` on purpose, so that MMCV does not pull the GUI OpenCV build.
 
 ## Automatic asset handling
 
@@ -52,3 +53,11 @@ This repository is adapted for a single RTX 4090 Linux server with Python 3.10, 
   - `python main.py --dataset plantseg --exp plantseg_refsegformer --eval --type val`
 - Evaluate an existing checkpoint on test and export masks:
   - `python main.py --dataset plantseg --exp plantseg_refsegformer --eval --type test --save_masks`
+
+## If OpenCV import fails on a server
+
+- If training fails with `ImportError: libGL.so.1`, the active environment most likely resolved to `opencv-python` instead of the headless build.
+- The intended fix is:
+  - uninstall `opencv-python`
+  - keep or reinstall `opencv-python-headless`
+  - reinstall `mmcv-full` if needed after the OpenCV package is corrected

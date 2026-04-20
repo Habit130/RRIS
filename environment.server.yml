@@ -4,6 +4,8 @@ channels:
 dependencies:
   - python=3.10
   - pip
+  - libglib
+  - libstdcxx-ng
   - pip:
       - --extra-index-url https://download.pytorch.org/whl/cu118
       - --find-links https://download.openmmlab.com/mmcv/dist/cu118/torch2.0.0/index.html
@@ -11,6 +13,7 @@ dependencies:
       - torch==2.0.0
       - torchvision==0.15.1
       - torchaudio==2.0.1
+      - opencv-python-headless
       - mmcv-full==1.7.2
       - transformers==4.23.1
       - tokenizers==0.13.1
@@ -23,4 +26,3 @@ dependencies:
       - pyyaml
       - termcolor
       - pycocotools
-      - opencv-python-headless
