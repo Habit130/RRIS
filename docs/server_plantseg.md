@@ -16,6 +16,8 @@ This repository is adapted for a single RTX 4090 Linux server with Python 3.10, 
 - Use `environment.server.yml` as the only environment definition artifact.
 - The environment pins PyTorch 2.0.0 CUDA 11.8 and `mmcv-full==1.7.2`.
 - `opencv-python-headless` is installed before `mmcv-full` on purpose, so that MMCV does not pull the GUI OpenCV build.
+- `numpy` is pinned to `1.25.2` because this repository also pins `scipy==1.9.2`, which does not support NumPy 2.x.
+- `setuptools` must be present because MMCV imports `torch.utils.cpp_extension`, which still depends on `pkg_resources`.
 
 ## Automatic asset handling
 
@@ -61,3 +63,4 @@ This repository is adapted for a single RTX 4090 Linux server with Python 3.10, 
   - uninstall `opencv-python`
   - keep or reinstall `opencv-python-headless`
   - reinstall `mmcv-full` if needed after the OpenCV package is corrected
+- If training fails with `ModuleNotFoundError: pkg_resources`, reinstall `setuptools` in the active environment before retrying MMCV imports.
