@@ -121,10 +121,9 @@ class Normalize(object):
         return image, target
 
 # We don't apply other complex data argumentation
-def get_transform(args):
+def get_transform(args, resize_target=True):
     transforms = []
-    # transforms.append(Resize(args.size,not args.eval))
-    transforms.append(Resize(args.size, args.size))
+    transforms.append(Resize(args.size, resize_target))
     transforms.append(ToTensor())
     transforms.append(Normalize(mean=[0.485, 0.456, 0.406],
                                   std=[0.229, 0.224, 0.225]))

@@ -1,7 +1,10 @@
 import numpy as np
 import torch 
 import torch.nn.functional as F
-from .util import AverageMeter, reduce_tensor
+from pathlib import Path
+from PIL import Image
+import json
+from .util import AverageMeter, ensure_dir, get_rank, is_dist_avail_and_initialized, reduce_tensor
 import time
 
 def validate(args, logger, data_loader, model, local_rank=0, eval_mode=True):
@@ -154,3 +157,91 @@ def validate(args, logger, data_loader, model, local_rank=0, eval_mode=True):
             "r": r, 
             "rIoU": rIoU
         }
+
+def _safe_div(numerator, denominator):
+    if denominator == 0:
+        return 0.0
+    return float(numerator) / float(denominator)
+
+def _compute_binary_metrics(tp, fp, fn, tn):
+    fg_iou = _safe_div(tp, tp + fp + fn)
+    dice = _safe_div(2 * tp, 2 * tp + fp + fn)
+    recall = _safe_div(tp, tp + fn)
+    bg_iou = _safe_div(tn, tn + fp + fn)
+    bg_acc = _safe_div(tn, tn + fp)
+    macc = (recall + bg_acc) / 2.0
+    miou = (fg_iou + bg_iou) / 2.0
+    return {
+        "IoU": fg_iou * 100.0,
+        "Dice": dice * 100.0,
+        "Recall": recall * 100.0,
+        "mIoU": miou * 100.0,
+        "mACC": macc * 100.0,
+    }
+
+def _save_prediction_mask(pred_mask, output_root, rel_mask_path):
+    save_path = Path(output_root) / rel_mask_path
+    ensure_dir(str(save_path.parent))
+    mask = (pred_mask.to(torch.uint8).cpu().numpy() * 255)
+    Image.fromarray(mask, mode="L").save(save_path)
+
+def validate_plantseg(args, logger, data_loader, model, local_rank=0, split="val", save_masks=False):
+    with torch.no_grad():
+        model.eval()
+
+        batch_time = AverageMeter()
+        stats = torch.zeros(4, dtype=torch.float64, device=f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
+        end = time.time()
+        output_root = Path(args.mask_output_root) / args.exp / split
+
+        for idx, (img, target, emb, att_mask, sample_ids, mask_paths) in enumerate(data_loader):
+            img = img.cuda(local_rank, non_blocking=True)
+            target = target.cuda(local_rank, non_blocking=True)
+            emb = emb.cuda(local_rank, non_blocking=True).squeeze(1)
+            att_mask = att_mask.cuda(local_rank, non_blocking=True).squeeze(1)
+
+            output, _ = model(img, emb, att_mask)
+            logits = F.interpolate(output[0], size=target.shape[-2:], align_corners=True, mode='bilinear')
+            pred = logits.argmax(1)
+
+            pred_fg = pred == 1
+            target_fg = target == 1
+            tp = torch.logical_and(pred_fg, target_fg).sum()
+            fp = torch.logical_and(pred_fg, torch.logical_not(target_fg)).sum()
+            fn = torch.logical_and(torch.logical_not(pred_fg), target_fg).sum()
+            tn = torch.logical_and(torch.logical_not(pred_fg), torch.logical_not(target_fg)).sum()
+            stats += torch.stack([tp, fp, fn, tn]).to(stats.dtype)
+
+            if save_masks and get_rank() == 0:
+                for pred_mask, rel_mask_path in zip(pred, mask_paths):
+                    _save_prediction_mask(pred_mask, output_root, rel_mask_path)
+
+            batch_time.update(time.time() - end)
+            end = time.time()
+
+            if (idx + 1) % args.print_freq == 0 and get_rank() == 0:
+                logger.info(
+                    f'Test: [{idx + 1}/{len(data_loader)}] '
+                    f'Time {batch_time.val:.3f} ({batch_time.avg:.3f})'
+                )
+
+        if is_dist_avail_and_initialized():
+            torch.distributed.all_reduce(stats, op=torch.distributed.ReduceOp.SUM)
+
+        metrics = _compute_binary_metrics(
+            tp=stats[0].item(),
+            fp=stats[1].item(),
+            fn=stats[2].item(),
+            tn=stats[3].item(),
+        )
+
+        if get_rank() == 0:
+            logger.info(
+                " ".join([f"{name} {value:.3f}" for name, value in metrics.items()])
+            )
+            if save_masks:
+                ensure_dir(str(output_root))
+                metrics_path = output_root.parent / f"metrics_{split}.json"
+                metrics_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+
+        return metrics

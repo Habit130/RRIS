@@ -8,6 +8,7 @@ from PIL import Image
 import transformers
 
 from dataset.refer import REFER
+from utils.util import ensure_bert_checkpoint
 
 class ReferDataset(data.Dataset):
     def __init__(self,
@@ -52,7 +53,8 @@ class ReferDataset(data.Dataset):
         # attention_masks -> mask掉pad的部分
         self.input_ids=[]
         self.attention_masks=[]
-        self.tokenizer = transformers.BertTokenizer.from_pretrained('./checkpoints/bert-base-uncased')
+        bert_path = ensure_bert_checkpoint(logger, './checkpoints/bert-base-uncased')
+        self.tokenizer = transformers.BertTokenizer.from_pretrained(bert_path)
         
         # pad_id=[0]
         # pad_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer.tokenize('[PAD]'))

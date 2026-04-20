@@ -1,7 +1,7 @@
 import torch.nn as nn
 import transformers
 import torch.nn.functional as F
-from utils.util import load_pretrained_swin
+from utils.util import ensure_bert_checkpoint, load_pretrained_swin
 
 from model.swin_transformer_encoder_fusion import SwinTransformerEncoderFusion
 from model.position_encoding import build_position_encoding
@@ -18,7 +18,8 @@ class RefSegFormer(nn.Module):
 
         self.position_encoding = build_position_encoding(args)
 
-        self.text_encoder = transformers.BertModel.from_pretrained('./checkpoints/bert-base-uncased')
+        bert_path = ensure_bert_checkpoint(logger, './checkpoints/bert-base-uncased')
+        self.text_encoder = transformers.BertModel.from_pretrained(bert_path)
         self.text_encoder.pooler = None
         self.image_encoder, self.segmentation = build_model(self.config, logger, args, self.position_encoding)
     

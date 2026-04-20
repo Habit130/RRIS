@@ -4,7 +4,9 @@ from torch import Tensor
 import torch.nn.functional as F
 import os 
 import subprocess
+from pathlib import Path
 from torch.hub import download_url_to_file
+import transformers
 
 def setup_distributed(backend="nccl", port=None):
     """Initialize distributed training environment.
@@ -12,6 +14,12 @@ def setup_distributed(backend="nccl", port=None):
     see torch.distributed.init_process_group() for more details
     """
     num_gpus = torch.cuda.device_count()
+    has_dist_env = any(key in os.environ for key in ["RANK", "WORLD_SIZE", "SLURM_JOB_ID"])
+
+    if not has_dist_env:
+        if num_gpus > 0:
+            torch.cuda.set_device(0)
+        return 0, False
 
     if "SLURM_JOB_ID" in os.environ:
         rank = int(os.environ["SLURM_PROCID"])
@@ -41,14 +49,37 @@ def setup_distributed(backend="nccl", port=None):
     )
     dist.barrier()
 
-    return rank % num_gpus
+    return rank % num_gpus, True
+
+def is_dist_avail_and_initialized():
+    return dist.is_available() and dist.is_initialized()
+
+def get_rank():
+    if not is_dist_avail_and_initialized():
+        return 0
+    return dist.get_rank()
+
+def get_world_size():
+    if not is_dist_avail_and_initialized():
+        return 1
+    return dist.get_world_size()
+
+def synchronize():
+    if is_dist_avail_and_initialized():
+        dist.barrier()
 
 def reduce_tensor(x:Tensor):
+    if not is_dist_avail_and_initialized():
+        return x
     rt=x.clone()
     dist.all_reduce(rt,op=dist.ReduceOp.SUM)
-    rt /= dist.get_world_size()
+    rt /= get_world_size()
 
     return rt
+
+def ensure_dir(path):
+    os.makedirs(path, exist_ok=True)
+    return path
 
 class AverageMeter:
     """
@@ -83,6 +114,7 @@ def print_model_params(model, logger, details=False):
 
 
 def save_checkpoint(epoch, model, optimizer, lr_schdeduler, logger, args, best=False):
+    ensure_dir(os.path.join(args.output, args.exp))
     save_state={
         'model':model.state_dict(),
         'optimizer':optimizer.state_dict(),
@@ -118,6 +150,7 @@ def load_checkpoint(args, model_without_ddp, optimizer, lr_scheduler, logger, ep
 def load_pretrained_swin(config, model, logger):
     logger.info(f"Loading weight {config.PRETRAIN.PATH} for fine-tuning......")
     if not os.path.exists(config.PRETRAIN.PATH):
+        ensure_dir(os.path.dirname(config.PRETRAIN.PATH))
         download_url_to_file("https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_base_patch4_window12_384_22k.pth",
             config.PRETRAIN.PATH)
     checkpoint=torch.load(config.PRETRAIN.PATH,map_location='cpu')
@@ -205,6 +238,22 @@ def load_pretrained_swin(config, model, logger):
 
     msg = model.load_state_dict(state_dict, strict=False)
     logger.warning(msg)
+
+def ensure_bert_checkpoint(logger, checkpoint_dir="./checkpoints/bert-base-uncased"):
+    config_path = Path(checkpoint_dir) / "config.json"
+    vocab_path = Path(checkpoint_dir) / "vocab.txt"
+    if config_path.exists() and vocab_path.exists():
+        return checkpoint_dir
+
+    ensure_dir(checkpoint_dir)
+    model_id = "google-bert/bert-base-uncased"
+    if logger is not None:
+        logger.info(f"Downloading official BERT assets to {checkpoint_dir}")
+    tokenizer = transformers.BertTokenizer.from_pretrained(model_id)
+    model = transformers.BertModel.from_pretrained(model_id)
+    tokenizer.save_pretrained(checkpoint_dir)
+    model.save_pretrained(checkpoint_dir)
+    return checkpoint_dir
 
 def criterion(input:Tensor, target:Tensor):
     """

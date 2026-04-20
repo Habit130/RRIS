@@ -1,0 +1,26 @@
+name: rris-plantseg-cu118
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu118
+      - --find-links https://download.openmmlab.com/mmcv/dist/cu118/torch2.0.0/index.html
+      - numpy<2
+      - torch==2.0.0
+      - torchvision==0.15.1
+      - torchaudio==2.0.1
+      - mmcv-full==1.7.2
+      - transformers==4.23.1
+      - tokenizers==0.13.1
+      - timm==0.6.11
+      - yacs
+      - scipy==1.9.2
+      - scikit-image==0.19.3
+      - matplotlib==3.6.1
+      - pillow
+      - pyyaml
+      - termcolor
+      - pycocotools
+      - opencv-python-headless

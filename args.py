@@ -8,7 +8,9 @@ def get_parser():
     # Random Seed
     parser.add_argument('--seed', type=int, default=0, help='random seed')
     # Dataset
-    parser.add_argument('--dataset', default='refcoco', help='choose one of the following datasets: refcoco, refcoco+, refcocog')
+    parser.add_argument('--dataset', default='refcoco', help='choose one of the following datasets: refcoco, refcoco+, refcocog, plantseg')
+    parser.add_argument('--plantseg_root', default='../plantseg', help='PlantSeg dataset root directory')
+    parser.add_argument('--caption_index', default=3, type=int, help='caption index used for PlantSeg text input')
     # BERT 
     parser.add_argument("--num_max_tokens", default=20, type=int, help="Number of max tokens in a sentence")
     # RefSegFormer
@@ -46,9 +48,11 @@ def get_parser():
     # Only evaluate
     parser.add_argument("--ckpt_epoch",default=39,type=int,help="epoch of the ckpt")
     parser.add_argument("--eval", action="store_true", help="Only run evaluation")
-    parser.add_argument("--type",default='val',type=str,help="[train,val,testA,testB]")
+    parser.add_argument("--type",default='val',type=str,help="[train,val,testA,testB,test]")
     # we provide two evaluate mode to better use all sentence to make predict
     parser.add_argument("--eval_mode",default='all',type=str,help="['cat', 'all']")
+    parser.add_argument("--save_masks", action="store_true", help="save prediction masks during evaluation")
+    parser.add_argument("--mask_output_root", default="./outputs/test_masks", type=str, help="root directory for saved prediction masks")
     # Save check point
     parser.add_argument("--output",default="./logs",type=str,help="log dir")
     # Distributed training parameters
